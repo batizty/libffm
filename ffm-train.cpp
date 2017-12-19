@@ -21,20 +21,28 @@ string train_help() {
 "usage: ffm-train [options] training_set_file [model_file]\n"
 "\n"
 "options:\n"
+// 正则化参数
 "-l <lambda>: set regularization parameter (default 0.00002)\n"
+// FM Degree Parameter 决定V参数的长度
 "-k <factor>: set number of latent factors (default 4)\n"
+// 迭代次数
 "-t <iteration>: set number of iterations (default 15)\n"
+// 学习率
 "-r <eta>: set learning rate (default 0.2)\n"
+// 线程个数
 "-s <nr_threads>: set number of threads (default 1)\n"
+// 验证数据位置
 "-p <path>: set path to the validation set\n"
 "--quiet: quiet mode (no output)\n"
+// 归一化的开关 TODO??
 "--no-norm: disable instance-wise normalization\n"
+// 自动停止
 "--auto-stop: stop at the iteration that achieves the best validation loss (must be used with -p)\n");
 }
 
 struct Option {
-    string tr_path;
-    string va_path;
+    string tr_path;         // train data path
+    string va_path;         // validation data path
     string model_path;
     ffm_parameter param;
     bool quiet = false;
@@ -50,13 +58,21 @@ string basename(string path) {
     return string(ptr);
 }
 
+/**
+ * parse arguments
+ */
 Option parse_option(int argc, char **argv) {
     vector<string> args;
     for(int i = 0; i < argc; i++)
         args.push_back(string(argv[i]));
 
-    if(argc == 1)
+    if(argc == 1) {
+        /**
+         * std::except 
+         *  construct the except object with explaination
+         */
         throw invalid_argument(train_help());
+    }
 
     Option opt;
 
@@ -114,12 +130,18 @@ Option parse_option(int argc, char **argv) {
         }
     }
 
+    /**
+     * 如果发现无法解析的参数，就会碰到这里的错误
+     */
     if(i != argc-2 && i != argc-1)
         throw invalid_argument("cannot parse command\n");
 
     opt.tr_path = args[i];
     i++;
 
+    /**
+     * 最后一个参数，默认为model_path
+     */
     if(i < argc) {
         opt.model_path = string(args[i]);
     } else if(i == argc) {
@@ -131,6 +153,9 @@ Option parse_option(int argc, char **argv) {
     return opt;
 }
 
+/**
+ * Train Main Method
+ */
 int train_on_disk(Option opt) {
     string tr_bin_path = basename(opt.tr_path) + ".bin";
     string va_bin_path = opt.va_path.empty()? "" : basename(opt.va_path) + ".bin";

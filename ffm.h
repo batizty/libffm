@@ -12,6 +12,9 @@ typedef double ffm_double;
 typedef int ffm_int;
 typedef long long ffm_long;
 
+/**
+ * 一个标准的FFM数据内容，必须有以下三个数据域
+ */
 struct ffm_node {
     ffm_int f; // field index
     ffm_int j; // feature index
@@ -27,6 +30,14 @@ struct ffm_model {
     ~ffm_model();
 };
 
+/**
+ * FFM 超参数
+ *  eta 学习率
+ *  lamda 正则化参数
+ *  nr_iters 迭代次数 
+ *  k number of latent factors?? TODO 应该是FM中的degree
+ *  auto_stop TODO 这个判断依据是什么 
+ */
 struct ffm_parameter {
     ffm_float eta = 0.2; // learning rate
     ffm_float lambda = 0.00002; // regularization parameter

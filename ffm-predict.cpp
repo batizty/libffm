@@ -15,7 +15,9 @@ using namespace std;
 using namespace ffm;
 
 struct Option {
-    string test_path, model_path, output_path;
+    string test_path;
+    string model_path;
+    string output_path;
 };
 
 string predict_help() {
@@ -23,6 +25,9 @@ string predict_help() {
 "usage: ffm-predict test_file model_file output_file\n");
 }
 
+/**
+ * parse test model output files from arguments
+ */
 Option parse_option(int argc, char **argv) {
     vector<string> args;
     for(int i = 0; i < argc; i++)
@@ -44,12 +49,14 @@ Option parse_option(int argc, char **argv) {
 }
 
 void predict(string test_path, string model_path, string output_path) {
+    // 这里有隐含限制 100000 行
     int const kMaxLineSize = 1000000;
 
     FILE *f_in = fopen(test_path.c_str(), "r");
     ofstream f_out(output_path);
     char line[kMaxLineSize];
 
+    // load ffm model
     ffm_model model = ffm_load_model(model_path);
 
     ffm_double loss = 0;
@@ -57,14 +64,19 @@ void predict(string test_path, string model_path, string output_path) {
     ffm_int i = 0;
 
     for(; fgets(line, kMaxLineSize, f_in) != nullptr; i++) {
+        // read lines and get predication
         x.clear();
         char *y_char = strtok(line, " \t");
+        // use 1, -1 as positive and negative label
         ffm_float y = (atoi(y_char)>0)? 1.0f : -1.0f;
 
+        // read a line data
         while(true) {
             char *field_char = strtok(nullptr,":");
             char *idx_char = strtok(nullptr,":");
             char *value_char = strtok(nullptr," \t");
+
+            // field:feature_index:value
             if(field_char == nullptr || *field_char == '\n')
                 break;
 
@@ -76,13 +88,16 @@ void predict(string test_path, string model_path, string output_path) {
             x.push_back(N);
         }
 
+        // get predication value
         ffm_float y_bar = ffm_predict(x.data(), x.data()+x.size(), model);
 
+        // update loss
         loss -= y==1? log(y_bar) : log(1-y_bar);
 
         f_out << y_bar << "\n";
     }
 
+    // compute logloss
     loss /= i;
 
     cout << "logloss = " << fixed << setprecision(5) << loss << endl;
