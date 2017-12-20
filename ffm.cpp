@@ -2,10 +2,14 @@
 The following table is the meaning of some variables in this code:
 
 W: The pointer to the beginning of the model
+    包含了 bias，w，v在内的整个model
 w: Dynamic pointer to access values in the model
 m: Number of fields
+    fields的个数
 k: Number of latent factors
+    k应该是FM中的degree
 n: Number of features
+    特征个数
 l: Number of data points
 f: Field index (0 to m-1)
 d: Latent factor index (0 to k-1)
@@ -84,6 +88,7 @@ inline ffm_float wTx(
     ffm_int align0 = 2 * get_k_aligned(model.k);
     ffm_int align1 = model.m * align0;
 
+    // paramter server
     __m128 XMMkappa = _mm_set1_ps(kappa);
     __m128 XMMeta = _mm_set1_ps(eta);
     __m128 XMMlambda = _mm_set1_ps(lambda);
@@ -236,10 +241,17 @@ inline ffm_float wTx(
 }
 #endif
 
+/**
+ * Malloc memory for ffm model
+ *  and keep data aligned to fast r/w
+ */
 ffm_float* malloc_aligned_float(ffm_long size)
 {
     void *ptr;
 
+    /** 
+     * On Different Paltform use different System Call
+     */
 #ifndef USESSE
 
     ptr = malloc(size * sizeof(ffm_float));
@@ -261,12 +273,15 @@ ffm_float* malloc_aligned_float(ffm_long size)
     return (ffm_float*)ptr;
 }
 
+/**
+ * Init model with Super Parameters
+ */
 ffm_model init_model(ffm_int n, ffm_int m, ffm_parameter param)
 {
     ffm_model model;
-    model.n = n;
-    model.k = param.k;
-    model.m = m;
+    model.n = n;            // features
+    model.k = param.k;      // latent
+    model.m = m;            // fields
     model.W = nullptr;
     model.normalization = param.normalization;
 
@@ -280,10 +295,11 @@ ffm_model init_model(ffm_int n, ffm_int m, ffm_parameter param)
     default_random_engine generator;
     uniform_real_distribution<ffm_float> distribution(0.0, 1.0);
 
-    for(ffm_int j = 0; j < model.n; j++) {
-        for(ffm_int f = 0; f < model.m; f++) {
-            for(ffm_int d = 0; d < k_aligned;) {
-                for(ffm_int s = 0; s < kALIGN; s++, w++, d++) {
+    // use normal distribution to init this model
+    for(ffm_int j = 0; j < model.n; j++) {      // features
+        for(ffm_int f = 0; f < model.m; f++) {  // fields
+            for(ffm_int d = 0; d < k_aligned;) {// latent
+                for(ffm_int s = 0; s < kALIGN; s++, w++, d++) { // aligned
                     w[0] = (d < model.k)? coef * distribution(generator) : 0.0;
                     w[kALIGN] = 1;
                 }
@@ -529,11 +545,16 @@ void ffm_read_problem_to_disk(string txt_path, string bin_path) {
     }
 }
 
+/**
+ * Train FFM model with traind data and validation data
+ */
 ffm_model ffm_train_on_disk(string tr_path, string va_path, ffm_parameter param) {
 
     problem_on_disk tr(tr_path);
     problem_on_disk va(va_path);
 
+    // init model with super parameter 
+    //  init W matrix with normal distribution
     ffm_model model = init_model(tr.meta.n, tr.meta.m, param);
 
     bool auto_stop = param.auto_stop && !va_path.empty();
@@ -542,6 +563,8 @@ ffm_model ffm_train_on_disk(string tr_path, string va_path, ffm_parameter param)
     vector<ffm_float> prev_W(w_size, 0);
     if(auto_stop)
         prev_W.assign(w_size, 0);
+    
+    // for per iteration, record the loss
     ffm_double best_va_loss = numeric_limits<ffm_double>::max();
 
     cout.width(4);
@@ -565,6 +588,8 @@ ffm_model ffm_train_on_disk(string tr_path, string va_path, ffm_parameter param)
 
         vector<ffm_int> outer_order(prob.meta.num_blocks);
         iota(outer_order.begin(), outer_order.end(), 0);
+
+        // random shuffle the samples to increase 随机性
         random_shuffle(outer_order.begin(), outer_order.end());
         for(auto blk : outer_order) {
             ffm_int l = prob.load_block(blk);
@@ -597,6 +622,7 @@ ffm_model ffm_train_on_disk(string tr_path, string va_path, ffm_parameter param)
                    
                     ffm_float kappa = -y*expnyt/(1+expnyt);
 
+                    // update Model
                     wTx(begin, end, r, model, kappa, param.eta, param.lambda, true);
                 }
             }
@@ -639,6 +665,9 @@ ffm_model ffm_train_on_disk(string tr_path, string va_path, ffm_parameter param)
     return model;
 }
 
+/**
+ * Store FFM model into Disk
+ */
 void ffm_save_model(ffm_model &model, string path) {
     ofstream f_out(path, ios::out | ios::binary);
     f_out.write(reinterpret_cast<char*>(&model.n), sizeof(ffm_int));
@@ -658,6 +687,9 @@ void ffm_save_model(ffm_model &model, string path) {
     }
 }
 
+/**
+ * Load FFM model into memory
+ */
 ffm_model ffm_load_model(string path) {
     ifstream f_in(path, ios::in | ios::binary);
 
@@ -691,6 +723,7 @@ ffm_float ffm_predict(ffm_node *begin, ffm_node *end, ffm_model &model) {
         r = 1/r;
     }
 
+    // t 就是预测值
     ffm_float t = wTx(begin, end, r, model);
 
     return 1/(1+exp(-t));
